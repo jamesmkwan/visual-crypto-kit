@@ -6,6 +6,13 @@ from random import SystemRandom
 random = SystemRandom()
 
 class Pix:
+    """
+    Defines an image with only black and white pixels.
+    White is represented as 0.
+    Black is represented as 1.
+    Supports converting to and from PIL Image mode 1
+    """
+
     def from_file(f):
         img = Image.open(f)
         return Pix.from_image(img)
@@ -17,7 +24,7 @@ class Pix:
         pix = Pix(bw.size[0], bw.size[1])
         for x in range(bw.size[0]):
             for y in range(bw.size[1]):
-                pix[x, y] = pixels[x, y]
+                pix[x, y] = not pixels[x, y]
         return pix
 
     def __init__(self, width, height):
@@ -31,7 +38,7 @@ class Pix:
         pixels = img.load()
         for y in range(self.height):
             for x in range(self.width):
-                pixels[x, y] = 0 if self[x, y] else 1
+                pixels[x, y] = not self[x, y]
         return img
 
     def to_file(self, f, scale=1, border=0):
@@ -42,11 +49,11 @@ class Pix:
             i = ImageOps.expand(i, border)
         i.save(f)
 
-    def ascii_art(self):
+    def print(self):
         for y in range(self.height):
             for x in range(self.width):
-                print('.' if self[x, y] else ' ', end='')
-            print()
+                print('\033[40m ' if self[x, y] else '\033[47m ', end='')
+            print('\033[0m')
 
     def overlay(self, *pix):
         assert all(self.width == p.width for p in pix)
@@ -103,7 +110,14 @@ def encrypt(pix, k, n):
 def encrypt_kk(pix, k):
     s0 = s(0, k)
     s1 = s(1, k)
-    e = 2
+
+    # double the pixels if not square
+    if k % 2 == 0:
+        s0 = [x + x for x in s0]
+        s1 = [x + x for x in s1]
+
+    e = 2 ** (k // 2)
+    assert len(s0[0]) == e * e
 
     shares = [Pix(pix.width * e, pix.height * e) for _ in range(k)]
     total = pix.width * pix.height
@@ -124,10 +138,10 @@ def encrypt_kk(pix, k):
     return shares
 
 def main():
-    z = 'cse207'
+    z = 'vc'
     pix = Pix.from_file('%s.png' % z)
 
-    k = 3
+    k = 2
     shares = encrypt(pix, k=k, n=k)
     assert len(shares) == k
 
@@ -135,14 +149,14 @@ def main():
         f = '%s_enc%d.png' % (z, n)
         print("Saving %s" % f, end='\r')
 
-        i = s.to_file(f, scale=4, border=1)
+        i = s.to_file(f, scale=8, border=1)
     print()
 
     p = Pix(shares[0].width, shares[0].height)
     p.overlay(*shares)
-    #p.ascii_art()
+    p.print()
 
-    p.to_file('%s_overlay.png' % z, scale=4, border=1)
+    p.to_file('%s_overlay.png' % z, scale=8, border=1)
 
 if __name__ == '__main__':
     main()
