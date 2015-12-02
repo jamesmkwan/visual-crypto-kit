@@ -1,7 +1,7 @@
 from bitarray import bitarray
 import functools
 import operator
-from PIL import Image
+from PIL import Image, ImageOps
 from random import SystemRandom
 random = SystemRandom()
 
@@ -27,12 +27,20 @@ class Pix:
         self.data.setall(0)
 
     def to_image(self):
-        sz = (self.width, self.height)
-        dt = self.data.tobytes()
-        return Image.frombuffer('1', sz, dt, 'raw', '1', 0, 1)
+        img = Image.new('1', (self.width, self.height))
+        pixels = img.load()
+        for y in range(self.height):
+            for x in range(self.width):
+                pixels[x, y] = 0 if self[x, y] else 1
+        return img
 
-    def to_file(self, f):
-        self.to_image().save(f)
+    def to_file(self, f, scale=1, border=0):
+        i = self.to_image()
+        if scale != 1:
+            i = i.resize((i.size[0] * scale, i.size[1] * scale))
+        if border:
+            i = ImageOps.expand(i, border)
+        i.save(f)
 
     def ascii_art(self):
         for y in range(self.height):
@@ -98,8 +106,10 @@ def encrypt_kk(pix, k):
     e = 2
 
     shares = [Pix(pix.width * e, pix.height * e) for _ in range(k)]
+    total = pix.width * pix.height
     for y in range(pix.height):
         for x in range(pix.width):
+            print("Block %d/%d" % (y * pix.width + x + 1, total), end='\r')
             if pix[x, y]:
                 p = permute(s1)
             else:
@@ -109,24 +119,30 @@ def encrypt_kk(pix, k):
                 for y2 in range(e):
                     for x2 in range(e):
                         shares[i][x*e + x2, y*e + y2] = p[i][x2 + y2 * e]
+    print()
 
     return shares
 
 def main():
-    pix = Pix.from_file('sss_w.png')
+    z = 'cse207'
+    pix = Pix.from_file('%s.png' % z)
 
     k = 3
     shares = encrypt(pix, k=k, n=k)
     assert len(shares) == k
 
     for n, s in enumerate(shares):
-        s.to_file('sss_enc%d.png' % n)
+        f = '%s_enc%d.png' % (z, n)
+        print("Saving %s" % f, end='\r')
+
+        i = s.to_file(f, scale=4, border=1)
+    print()
 
     p = Pix(shares[0].width, shares[0].height)
     p.overlay(*shares)
-    p.ascii_art()
+    #p.ascii_art()
 
-    p.to_file('sss_overlay.png')
+    p.to_file('%s_overlay.png' % z, scale=4, border=1)
 
 if __name__ == '__main__':
     main()
