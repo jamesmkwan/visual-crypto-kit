@@ -150,8 +150,7 @@ def encrypt_kk(pix, k):
     return shares
 
 def make_playground(n):
-    x = '''
-<html>
+    x = '''<html>
 <head>
 <title>vckit playground</title>
 <style type="text/css">
@@ -159,15 +158,16 @@ img.share {
   position: absolute;
   top: 0;
   left: 0;
-  opacity: 1;
-
   max-width: 100%%;
+  max-height: 100%%;
+  z-index: 5;
 }
 
 #controller {
   position: absolute;
   right: 0;
   bottom: 0;
+  z-index: 100;
 }
 </style>
 <script type="text/javascript">
@@ -188,8 +188,7 @@ function update() {
 %s
 </select>
 </body>
-</html>
-'''
+</html>'''
     imgs = []
     for i in range(n):
         imgs.append('<img src="share_%d.png" id="share_%d" class="share">' % (i, i))
