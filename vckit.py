@@ -1,8 +1,11 @@
+import argparse
 from bitarray import bitarray
 import functools
 import operator
+import os
 from PIL import Image, ImageOps
 from random import SystemRandom
+import sys
 random = SystemRandom()
 
 class Pix:
@@ -41,8 +44,17 @@ class Pix:
                 pixels[x, y] = not self[x, y]
         return img
 
+    def to_transparent_image(self):
+        img = self.to_image().convert('RGBA')
+        pixels = img.load()
+        for y in range(self.height):
+            for x in range(self.width):
+                if pixels[x, y] == (255, 255, 255, 255):
+                    pixels[x, y] = (255, 255, 255, 0)
+        return img
+
     def to_file(self, f, scale=1, border=0):
-        i = self.to_image()
+        i = self.to_transparent_image()
         if scale != 1:
             i = i.resize((i.size[0] * scale, i.size[1] * scale))
         if border:
@@ -123,7 +135,8 @@ def encrypt_kk(pix, k):
     total = pix.width * pix.height
     for y in range(pix.height):
         for x in range(pix.width):
-            print("Block %d/%d" % (y * pix.width + x + 1, total), end='\r')
+            i = y * pix.width + x + 1
+            print("Block %d/%d" % (i, total), end='\r', file=sys.stderr)
             if pix[x, y]:
                 p = permute(s1)
             else:
@@ -133,31 +146,100 @@ def encrypt_kk(pix, k):
                 for y2 in range(e):
                     for x2 in range(e):
                         shares[i][x*e + x2, y*e + y2] = p[i][x2 + y2 * e]
-    print()
-
+    print(file=sys.stderr)
     return shares
 
-def main():
-    z = 'vc'
-    pix = Pix.from_file('%s.png' % z)
+def make_playground(n):
+    x = '''
+<html>
+<head>
+<title>vckit playground</title>
+<style type="text/css">
+img.share {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 1;
 
-    k = 2
-    shares = encrypt(pix, k=k, n=k)
-    assert len(shares) == k
+  max-width: 100%%;
+}
+
+#controller {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+</style>
+<script type="text/javascript">
+function update() {
+  var ctl = document.getElementById("controller");
+  console.log(ctl);
+
+  for (var i = 0; i < ctl.length; i++) {
+    var v = ctl[i].selected ? 'visible' : 'hidden';
+    document.getElementById(ctl[i].value).style.visibility = v;
+  }
+}
+</script>
+</head>
+<body>
+%s
+<select id="controller" onchange="update()" multiple>
+%s
+</select>
+</body>
+</html>
+'''
+    imgs = []
+    for i in range(n):
+        imgs.append('<img src="share_%d.png" id="share_%d" class="share">' % (i, i))
+
+    opts = []
+    for i in range(n):
+        opts.append('<option value="share_%d" selected>share_%d.png</option>' % (i, i))
+
+    return x % ('\n'.join(imgs), '\n'.join(opts))
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input', required=True,
+            help="input image")
+    parser.add_argument('-o', '--output', required=True,
+            help="output directory")
+    parser.add_argument('-n', type=int, required=True,
+            help="number of images to generate")
+    parser.add_argument('-p', '--preview', action='store_true',
+            help="print preview to stdout")
+    parser.add_argument('--playground', action='store_true',
+            help="make playground")
+    parser.add_argument('-s', '--scale', type=int, default=8,
+            help="output image scale")
+    parser.add_argument('-b', '--border', type=int, default=1,
+            help="output image border (added after scaling)")
+    args = parser.parse_args()
+
+    os.mkdir(args.output)
+
+    pix = Pix.from_file(args.input)
+    shares = encrypt(pix, k=args.n, n=args.n)
 
     for n, s in enumerate(shares):
-        f = '%s_enc%d.png' % (z, n)
-        print("Saving %s" % f, end='\r')
-
-        i = s.to_file(f, scale=8, border=1)
-    print()
+        f = os.path.join(args.output, 'share_%d.png' % n)
+        print("Saving %s" % f, end='\r', file=sys.stderr)
+        i = s.to_file(f, scale=args.scale, border=args.border)
+    print(file=sys.stderr)
 
     p = Pix(shares[0].width, shares[0].height)
     p.overlay(*shares)
-    p.print()
+    f = os.path.join(args.output, 'overlay.png')
+    p.to_file(f, scale=args.scale, border=args.border)
+    if args.preview:
+        p.print()
 
-    p.to_file('%s_overlay.png' % z, scale=8, border=1)
+    if args.playground:
+        with open(os.path.join(args.output, 'playground.html'), 'w') as f:
+            out = make_playground(args.n)
+            f.write(out)
 
 if __name__ == '__main__':
     main()
-s0 = s(0, 4)
